@@ -109,6 +109,7 @@ namespace mongo {
     const char * compilerFlags() { return ""; }
 
 #if defined(_WIN32)
+#if 0
     string sysInfo() {
         stringstream ss;
         ss << "not-scons win";
@@ -120,6 +121,7 @@ namespace mongo {
         ss << (sizeof(char *) == 8 ? " 64bit" : " 32bit");
         return ss.str();
     }
+#endif
 #else  // defined(_WIN32)
     string sysInfo() { return ""; }
 
