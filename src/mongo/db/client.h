@@ -156,7 +156,7 @@ namespace mongo {
             ReadContext(const std::string& ns, const std::string& path=storageGlobalParams.dbpath);
             Context& ctx() { return *c.get(); }
         private:
-            scoped_ptr<Lock::DBRead> lk;
+            scoped_ptr<HLM::Granular> lk;
             scoped_ptr<Context> c;
         };
 

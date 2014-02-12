@@ -46,6 +46,7 @@
 #include "mongo/util/concurrency/rwlock.h"
 #include "mongo/util/concurrency/threadlocal.h"
 #include "mongo/util/stacktrace.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 // oplog locking
 // no top level read locks
@@ -83,6 +84,11 @@ namespace mongo {
         void assertNothingSpooled();
         void releasingWriteLock();
     }
+
+    // e.g. externalobjsortmutex uses hlmutex as it can be locked for very long times
+    // todo : report HLMutex status in db.currentOp() output
+    // perhaps move this elsewhere as this could be used in mongos and this file is for mongod
+    HLMutex::HLMutex(const char *name) : SimpleMutex(name) { }
 
     /* dbname->lock
        Currently these are never deleted - will linger if db was closed. (that should be fine.)
@@ -212,22 +218,25 @@ namespace mongo {
     }
     
     int Lock::isLocked() {
-        return threadState();
+        // wrong but a start...
+        return HLM::LockAll::already() ? 'W' : 0;
     }
     int Lock::isReadLocked() {
-        return threadState() == 'R' || threadState() == 'r';
+        // wrong but a start...
+        return HLM::LockAll::already();
     }
     int Lock::somethingWriteLocked() {
-        return threadState() == 'W' || threadState() == 'w';
+        // wrong but a start...
+        return HLM::LockAll::already();
     }
     bool Lock::isRW() {
-        return threadState() == 'W' || threadState() == 'R';
+        return HLM::LockAll::already();
     }
     bool Lock::isW() { 
-        return threadState() == 'W';
+        return HLM::LockAll::already();
     }
     bool Lock::isR() { 
-        return threadState() == 'R';
+        return HLM::LockAll::already();
     }
     bool Lock::nested() { 
         // note this doesn't tell us much actually, it tells us if we are nesting locks but 
@@ -236,6 +245,16 @@ namespace mongo {
         return lockState().recursiveCount() > 1;
     }
 
+#if defined(CR)
+    bool Lock::isWriteLocked(const StringData& ns) { 
+        // todo: doesn't handle if locked all
+        return HLM::LockMid::already( RecLocker::tempHash(ns) ) || isW();
+    }
+    bool Lock::atLeastReadLocked(const StringData& ns)
+    { 
+        return isWriteLocked(ns);
+    }
+#else
     bool Lock::isWriteLocked(const StringData& ns) { 
         LockState &ls = lockState();
         if( ls.threadState() == 'W' ) 
@@ -253,19 +272,24 @@ namespace mongo {
             return false;
         return ls.isLocked( ns );
     }
+#endif
     void Lock::assertAtLeastReadLocked(const StringData& ns) { 
+#if !defined(CR)
         if( !atLeastReadLocked(ns) ) { 
             LockState &ls = lockState();
             log() << "error expected " << ns << " to be locked " << endl;
             ls.dump();
             msgasserted(16104, str::stream() << "expected to be read locked for " << ns);
         }
+#endif
     }
     void Lock::assertWriteLocked(const StringData& ns) { 
+#if !defined(CR)
         if( !Lock::isWriteLocked(ns) ) { 
             lockState().dump();
             msgasserted(16105, str::stream() << "expected to be write locked for " << ns);
         }
+#endif
     }
     bool Lock::dbLevelLockingEnabled() {
         return DB_LEVEL_LOCKING_ENABLED;
@@ -292,7 +316,7 @@ namespace mongo {
         }
     }
 
-
+#if !defined(CR)
     Lock::ScopedLock::ScopedLock( char type ) 
         : _type(type), _stat(0) {
         LockState& ls = lockState();
@@ -309,10 +333,7 @@ namespace mongo {
         long long acquisitionTime = _timer.micros();
         _timer.reset();
         _stat = stat;
-
-        // increment the operation level statistics
         cc().curop()->lockStat().recordAcquireTimeMicros( _type , acquisitionTime );
-
         return acquisitionTime;
     }
 
@@ -339,10 +360,20 @@ namespace mongo {
     
     void Lock::ScopedLock::relock() {
         _pbws_lk.relock();
-        resetTime();
         _relock();
+        resetTime();
     }
+#else
+    long long Lock::ScopedLock::acquireFinished( LockStat* stat ) { return 0; }
+    void Lock::ScopedLock::recordTime() {
+    }
+    void Lock::ScopedLock::resetTime() {
+    }
+    Lock::TempRelease::TempRelease() : cant(true) {}
+    Lock::TempRelease::~TempRelease() {}
+#endif
 
+    /*
     Lock::TempRelease::TempRelease() : cant( Lock::nested() )
     {
         if( cant )
@@ -369,8 +400,12 @@ namespace mongo {
 
         ls.enterScopedLock( scopedLk );
         scopedLk->relock();
+    }*/
+#if defined(CR)
+    Lock::GlobalWrite::~GlobalWrite() { 
+        dur::releasingWriteLock();
     }
-
+#else
     void Lock::GlobalWrite::_tempRelease() { 
         fassert(16121, !noop);
         char ts = threadState();
@@ -385,7 +420,6 @@ namespace mongo {
         Acquiring a(this,lockState());
         qlk.lock_W();
     }
-
     void Lock::GlobalRead::_tempRelease() { 
         fassert(16127, !noop);
         char ts = threadState();
@@ -399,7 +433,6 @@ namespace mongo {
         Acquiring a(this,lockState());
         qlk.lock_R();
     }
-
     void Lock::DBWrite::_tempRelease() { 
         unlockDB();
     }
@@ -412,8 +445,9 @@ namespace mongo {
     void Lock::DBRead::_relock() { 
         lockDB(_what);
     }
+#endif
 
-    Lock::GlobalWrite::GlobalWrite(bool sg, int timeoutms)
+/*    Lock::GlobalWrite::GlobalWrite(bool sg, int timeoutms)
         : ScopedLock('W') {
         char ts = threadState();
         noop = false;
@@ -458,8 +492,22 @@ namespace mongo {
         verify( threadState() == 'R' );
         qlk.R_to_W();
         lockState().changeLockState( 'W' );
+    }*/
+#if defined(CR)
+    Lock::DBWrite::~DBWrite() {
+        dur::releasingWriteLock();
     }
-
+    Lock::DBWrite::DBWrite(const StringData& dbOrNs) : 
+        lk( RecLocker::tempHash(dbOrNs), true )
+        { }
+    // note this is an exclusive lock!
+    Lock::DBRead::DBRead(const StringData& dbOrNs) : 
+        lk( RecLocker::tempHash(dbOrNs), true )
+        { }
+    Lock::DBWrite::UpgradeToExclusive::UpgradeToExclusive() { 
+        fassert(1,false);
+    }
+#else
     Lock::GlobalRead::GlobalRead( int timeoutms ) 
         : ScopedLock( 'R' ) {
         LockState& ls = lockState();
@@ -486,7 +534,6 @@ namespace mongo {
             qlk.unlock_R();
         }
     }
-
     void Lock::DBWrite::lockNestable(Nestable db) { 
         _nested = true;
         LockState& ls = lockState();
@@ -767,6 +814,7 @@ namespace mongo {
         // Start recording lock time again
         lockState().resetLockTime();
     }
+#endif
 
     writelocktry::writelocktry( int tryms ) : 
         _got( false ),

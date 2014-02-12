@@ -39,6 +39,9 @@
 #include "mongo/db/lockstat.h"
 #include "mongo/util/concurrency/mutex.h"
 #include "mongo/util/concurrency/rwlock.h"
+#include "schedule/hlm.h"
+
+#define CR 1
 
 namespace mongo {
 
@@ -104,7 +107,7 @@ namespace mongo {
     public:
         class ScopedLock : boost::noncopyable {
         public:
-            virtual ~ScopedLock();
+            //virtual ~ScopedLock();
 
             /** @return micros since we started acquiring */
             long long acquireFinished( LockStat* stat );
@@ -113,7 +116,7 @@ namespace mongo {
             void recordTime();
             // Start recording a new period, starting now()
             void resetTime();
-
+#if !defined(CR)
         protected:
             explicit ScopedLock( char type ); 
 
@@ -133,24 +136,42 @@ namespace mongo {
             Timer _timer;
             char _type;      // 'r','w','R','W'
             LockStat* _stat; // the stat for the relevant lock to increment when we're done
+#endif
         };
 
         // note that for these classes recursive locking is ok if the recursive locking "makes sense"
         // i.e. you could grab globalread after globalwrite.
-        
-        class GlobalWrite : public ScopedLock {
-            bool noop;
-        protected:
-            void _tempRelease();
-            void _relock();
+        class GlobalWrite : public ScopedLock { 
+            HLM::LockAll lk;
         public:
-            // stopGreed is removed and does NOT work
-            // timeoutms is only for writelocktry -- deprecated -- do not use
-            GlobalWrite(bool stopGreed = false, int timeoutms = -1 ); 
-            virtual ~GlobalWrite();
-            void downgrade(); // W -> R
-            void upgrade();   // caution see notes
+            GlobalWrite(bool stopGreed = false, int timeoutms = -1 ) { }
+            ~GlobalWrite();
+            void upgrade() { }
+            void downgrade() { }
         };
+#if defined(CR)
+        class DBRead : public ScopedLock{ 
+            HLM::LockMid lk;
+        public:
+            DBRead(const StringData& dbOrNs);
+        };
+        class GlobalRead : public ScopedLock { 
+            HLM::LockAll lk;
+        public:
+            GlobalRead( int timeoutms = -1 ) { }
+        };
+        class DBWrite : public ScopedLock{
+            HLM::LockMid lk;
+        public:
+            DBWrite(const StringData& dbOrNs);
+            ~DBWrite();
+            class UpgradeToExclusive : private boost::noncopyable {
+            public:
+                UpgradeToExclusive();
+                bool gotUpgrade() const { return false; }
+            };
+        };
+#else
         class GlobalRead : public ScopedLock { // recursive is ok
         public:
             bool noop;
@@ -162,7 +183,6 @@ namespace mongo {
             GlobalRead( int timeoutms = -1 ); 
             virtual ~GlobalRead();
         };
-
         // lock this database. do not shared_lock globally first, that is handledin herein. 
         class DBWrite : public ScopedLock {
             /**
@@ -228,6 +248,7 @@ namespace mongo {
             bool _nested;
             
         };
+#endif
 
     };
 
@@ -248,4 +269,15 @@ namespace mongo {
         ~writelocktry();
         bool got() const { return _got; }
     };
+
+    /** a mutex, but reported in curop() - thus a "high level" (HL) one
+        some overhead so we don't use this for everything.  the externalobjsort mutex
+        uses this, as it can be held for eons. implementation still needed. */
+    class HLMutex : public SimpleMutex {
+        LockStat ls;
+    public:
+        HLMutex(const char *name);
+    };
+
+
 }

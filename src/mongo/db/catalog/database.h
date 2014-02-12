@@ -51,6 +51,8 @@ namespace mongo {
     */
     class Database {
     public:
+        const unsigned ordinal;
+
         // you probably need to be in dbHolderMutex when constructing this
         Database(const char *nm, /*out*/ bool& newDb,
                  const string& path = storageGlobalParams.dbpath);

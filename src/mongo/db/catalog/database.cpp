@@ -50,6 +50,7 @@
 #include "mongo/db/server_parameters.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/db/catalog/collection.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
 
@@ -106,7 +107,9 @@ namespace mongo {
     }
 
     Database::Database(const char *nm, bool& newDb, const string& path )
-        : _name(nm), _path(path),
+        :
+   ordinal(RecLocker::tempHash(nm)),    
+    _name(nm), _path(path),
           _namespaceIndex( _path, _name ),
           _extentManager(_name, _path, storageGlobalParams.directoryperdb),
           _profileName(_name + ".system.profile"),

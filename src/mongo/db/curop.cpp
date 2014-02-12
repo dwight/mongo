@@ -206,7 +206,7 @@ namespace mongo {
     void CurOp::recordGlobalTime( long long micros ) const {
         if ( _client ) {
             const LockState& ls = _client->lockState();
-            verify( ls.threadState() );
+            //verify( ls.threadState() );
             Top::global.record( _ns , _op , ls.hasAnyWriteLock() ? 1 : -1 , micros , _isCommand );
         }
     }

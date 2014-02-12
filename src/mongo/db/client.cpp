@@ -66,6 +66,7 @@
 #include "mongo/util/file_allocator.h"
 #include "mongo/util/mongoutils/checksum.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 #ifndef __has_feature
 #define __has_feature(x) 0
@@ -269,7 +270,7 @@ namespace mongo {
      */
     Client::ReadContext::ReadContext(const string& ns, const std::string& path) {
         {
-            lk.reset( new Lock::DBRead(ns) );
+            lk.reset( new GranularForDB(ns) );
             Database *db = dbHolder().get(ns, path);
             if( db ) {
                 c.reset( new Context(path, ns, db) );
@@ -292,7 +293,7 @@ namespace mongo {
                     Context c(ns, path);
                 }
                 // db could be closed at this interim point -- that is ok, we will throw, and don't mind throwing.
-                lk.reset( new Lock::DBRead(ns) );
+                lk.reset( new GranularForDB(ns) );
                 c.reset(new Context(ns, path));
             }
             else { 
