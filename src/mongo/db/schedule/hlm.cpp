@@ -43,7 +43,7 @@ namespace {
     pthread_t pthread_self() { return GetCurrentThreadId(); }
 #endif
 
-    // presumably this gets smarter later to avoid "performance collisions" too often
+    // this must be smarter later as written there can be "performance collisions"
     // 
     // the "who" field below is to support recursion -- a simple list of what is locked 
     // in TLS for every thread would be big and messy.
