@@ -127,3 +127,12 @@ See llCache in hlm.cpp.
 3) The leaf layer of locks are not rwlocks. We might want that.
 
 4) Make RecLocker::tag() faster.  Or rather, profile everything and fix the obvious slow points.
+
+5) Hook into Runner, and make it not keep things locked that it shouldn't keep locked.
+
+Misc
+----
+
+* Perhaps when yieldSometimtes is called, we can release a bunch of locks, as that is the contract
+for yieldSometimes.  Although maybe Runner just handles everything for us regardless.
+
