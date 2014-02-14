@@ -53,6 +53,7 @@
 #include "mongo/db/storage/record.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/platform/unordered_set.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
 
@@ -715,6 +716,8 @@ namespace mongo {
             // Save state before making changes
             runner->saveState();
 
+            DiskLoc finalLoc;
+
             if (inPlace && !driver->modsAffectIndices()) {
 
                 // If a set of modifiers were all no-ops, we are still 'in place', but there is
@@ -737,6 +740,7 @@ namespace mongo {
                         std::memcpy(targetPtr, sourcePtr, where->size);
                     }
                     docWasModified = true;
+                    finalLoc = loc;
                     opDebug->fastmod = true;
                 }
                 newObj = oldObj;
@@ -761,6 +765,7 @@ namespace mongo {
                 }
 
                 docWasModified = true;
+                finalLoc = newLoc;
             }
 
             // Restore state after modification
@@ -770,6 +775,27 @@ namespace mongo {
 
             // Call logOp if requested.
             if (request.shouldCallLogOp()) {
+                if( !request.isMulti() && !finalLoc.isNull() ) { 
+                    // release most of our granular locks before doing logOp, so we aren't in the 
+                    // way of others while we work with the local database.  
+                    //
+                    // this will need some careful thinking post-prototype stage about exactly 
+                    // when this is ok or not.  for example need to think about implications of 
+                    // logForSharding and such when that is running.
+                    //
+                    // note even with the unlockAll(), we are still in a shared lock at the database
+                    // level.  so it is not possible someone will do a journal commit until we 
+                    // finish the logOp.  so we are still all-or-nothing.
+                    //
+                    // it's not completely clear to me that isMulti is a problem, but trying 
+                    // first for the simpler single item case.
+                    // 
+                    // we need to keep the document locked though in case another thread updates it
+                    // again before we memcpy from it in logOp.
+                    //
+                    DEV RecLocker::assertTagged( finalLoc.rec() );
+                    RecLocker::unlockNonTagged();
+                }
                 if (driver->isDocReplacement() || !logObj.isEmpty()) {
                     BSONObj idQuery = driver->makeOplogEntryQuery(newObj, request.isMulti());
                     logOp("u", nsString.ns().c_str(), logObj , &idQuery,

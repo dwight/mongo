@@ -37,6 +37,7 @@
 #include "mongo/db/taskqueue.h"
 #include "mongo/util/concurrency/threadlocal.h"
 #include "mongo/util/stacktrace.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
 
@@ -51,6 +52,8 @@ namespace mongo {
         }
 
         void ThreadLocalIntents::push(const WriteIntent& x) {
+            RecLocker::tag(x.start());
+
             if( !commitJob._hasWritten )
                 commitJob._hasWritten = true;
 

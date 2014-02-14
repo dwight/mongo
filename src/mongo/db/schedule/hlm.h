@@ -19,7 +19,7 @@ namespace mongo {
             bool _exclusive, topAlready;
             SimpleRWLock *middle;
         public:
-            LockMid(unsigned a, bool exclusive); // use false for exclusive.  exclusive=true is for internal impl
+            LockMid(unsigned a, bool exclusive);
             ~LockMid();
             static bool already(unsigned a);
             bool lockedMiddle() const { return middle != 0; }

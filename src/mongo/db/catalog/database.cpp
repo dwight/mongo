@@ -107,9 +107,9 @@ namespace mongo {
     }
 
     Database::Database(const char *nm, bool& newDb, const string& path )
-        :
-   ordinal(RecLocker::tempHash(nm)),    
-    _name(nm), _path(path),
+        :           
+          ordinal(RecLocker::tempHash(nm)), // for performance reasons, we precompute the hash and remember it
+          _name(nm), _path(path),
           _namespaceIndex( _path, _name ),
           _extentManager(_name, _path, storageGlobalParams.directoryperdb),
           _profileName(_name + ".system.profile"),

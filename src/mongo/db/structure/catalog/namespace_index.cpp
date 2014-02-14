@@ -33,7 +33,7 @@
 #include <boost/filesystem/operations.hpp>
 
 #include "mongo/db/structure/catalog/namespace_details.h"
-
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
 
@@ -46,8 +46,12 @@ namespace mongo {
         if ( !_ht )
             return 0;
         NamespaceDetails *d = _ht->get(ns);
-        if ( d && d->isCapped() )
-            d->cappedCheckMigrate();
+        if( d ) {
+            // todo : need more than this to guard everything.
+            RecLocker::lock(ns.toString(), d);
+            if ( d->isCapped() )
+                d->cappedCheckMigrate();
+        }
         return d;
     }
 

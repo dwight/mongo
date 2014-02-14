@@ -39,7 +39,7 @@ namespace mongo {
         inline void assertTagged(void *p) { 
             PageMgr::assertTagged(quantize(p));
         }
-        /**inline void unlockAllExcept(DiskLoc loc) { 
+        /*inline void unlockAllExcept(DiskLoc loc) { 
             unsigned b = loc.a() << 20 | loc.getOfs() >> 12;
             PageMgr::unlockAll( cc().database()->ordinal, b );
         }*/

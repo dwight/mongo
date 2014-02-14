@@ -84,6 +84,7 @@
 #include "mongo/util/goodies.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/time_support.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
     
@@ -894,6 +895,8 @@ namespace mongo {
 
         StatusWith<DiskLoc> status = collection->insertDocument( js, true );
         uassertStatusOK( status.getStatus() );
+        DEV RecLocker::assertTagged( status.getValue().rec() ); // it was tagged by our write intent declaration...
+        RecLocker::unlockNonTagged();
         logOp("i", ns, js);
     }
 

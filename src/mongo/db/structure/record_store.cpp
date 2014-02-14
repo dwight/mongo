@@ -35,6 +35,7 @@
 
 
 #include "mongo/db/pdfile.h" // XXX-ERH
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
 
@@ -52,7 +53,7 @@ namespace mongo {
                                           ExtentManager* em,
                                           bool isSystemIndexes )
         : RecordStore( ns ),
-          _details( details ),
+          __details( details ),
           _extentManager( em ),
           _isSystemIndexes( isSystemIndexes ) {
     }
@@ -64,7 +65,20 @@ namespace mongo {
         return _extentManager->recordFor( loc );
     }
 
+    // the idea here is that we will protect _details so that it can't be directly accessed and 
+    // you use this instead.
+    class DetailsPtr { 
+        RecLocker::Scoped lk;
+        NamespaceDetails * const p;
+    public:
+        DetailsPtr(RecordStoreV1Base *rs) : 
+          lk( rs->__details ), p(rs->__details) { }
+        operator NamespaceDetails * () { return p; }
+        NamespaceDetails* operator->() { return p; }
+    };
+
     StatusWith<DiskLoc> RecordStoreV1Base::insertRecord( const DocWriter* doc, int quotaMax ) {
+        DetailsPtr _details(this);
         int lenWHdr = doc->documentSize() + Record::HeaderSize;
         if ( doc->addPadding() )
             lenWHdr = _details->getRecordAllocationSize( lenWHdr );
@@ -88,6 +102,7 @@ namespace mongo {
 
 
     StatusWith<DiskLoc> RecordStoreV1Base::insertRecord( const char* data, int len, int quotaMax ) {
+        DetailsPtr _details(this);
         int lenWHdr = _details->getRecordAllocationSize( len + Record::HeaderSize );
         fassert( 17208, lenWHdr >= ( len + Record::HeaderSize ) );
 
@@ -147,6 +162,7 @@ namespace mongo {
 
         /* add to the free list */
         {
+            DetailsPtr _details(this);
             _details->incrementStats( -1 * todelete->netLength(), -1 );
 
             if ( _isSystemIndexes ) {
@@ -199,6 +215,7 @@ namespace mongo {
     }
 
     StatusWith<DiskLoc> SimpleRecordStoreV1::allocRecord( int lengthWithHeaders, int quotaMax ) {
+        DetailsPtr _details(this);
         DiskLoc loc = _details->alloc( NULL, _ns, lengthWithHeaders );
         if ( !loc.isNull() )
             return StatusWith<DiskLoc>( loc );
@@ -261,6 +278,7 @@ namespace mongo {
     }
 
     StatusWith<DiskLoc> CappedRecordStoreV1::allocRecord( int lengthWithHeaders, int quotaMax ) {
+        DetailsPtr _details(this);
         DiskLoc loc = _details->alloc( _collection, _ns, lengthWithHeaders );
         if ( !loc.isNull() )
             return StatusWith<DiskLoc>( loc );

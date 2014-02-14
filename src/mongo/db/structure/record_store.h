@@ -84,8 +84,10 @@ namespace mongo {
             require: you must have already declared write intent for the record header.
         */
         void _addRecordToRecListInExtent(Record* r, DiskLoc loc);
-
-        NamespaceDetails* _details;
+    private:
+        friend class DetailsPtr;
+        NamespaceDetails* __details;
+    protected:
         ExtentManager* _extentManager;
         bool _isSystemIndexes;
     };

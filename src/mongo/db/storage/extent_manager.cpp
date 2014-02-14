@@ -38,8 +38,8 @@
 #include "mongo/db/storage/data_file.h"
 #include "mongo/db/storage/extent.h"
 #include "mongo/db/storage/extent_manager.h"
-
 #include "mongo/db/pdfile.h"
+#include "mongo/db/schedule/rec_locker.h"
 
 namespace mongo {
 
@@ -203,8 +203,12 @@ namespace mongo {
         if ( ofs < DataFileHeader::HeaderSize ) {
             df->badOfs(ofs); // will uassert - external call to keep out of the normal code path
         }
+       
+        Record* r = reinterpret_cast<Record*>( df->p() + ofs );
 
-        return reinterpret_cast<Record*>( df->p() + ofs );
+        RecLocker::lock(r);
+
+        return r;
     }
 
     DiskLoc ExtentManager::extentLocFor( const DiskLoc& loc ) const {

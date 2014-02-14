@@ -1,5 +1,4 @@
 #include "rec_locker.h"
-#include "concurrency_research.h"
 
 namespace mongo { 
 
