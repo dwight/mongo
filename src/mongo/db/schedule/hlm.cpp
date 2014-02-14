@@ -117,6 +117,10 @@ namespace mongo {
         const int EXCLUSIVE = -1;
         const int SHARED = 1;
 
+        bool somethingIsLocked() { 
+            return myState.getMake()->top != 0;
+        }
+
         bool LockAll::already() {
             return myState.getMake()->top == EXCLUSIVE;
         }

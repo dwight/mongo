@@ -5,6 +5,7 @@ namespace mongo {
     struct MyState;
     namespace HLM { 
         typedef unsigned long long PageId;
+        bool somethingIsLocked(); // true if locked either shared or exclusive
         class LockAll { 
             bool _already;
             MyState *_s;

@@ -218,16 +218,17 @@ namespace mongo {
     }
     
     int Lock::isLocked() {
-        // wrong but a start...
-        return HLM::LockAll::already() ? 'W' : 0;
+        if( HLM::LockAll::already() )
+            return 'W';
+        if( HLM::somethingIsLocked() ) 
+            return 'w'; // hmmm
+        return 0;
     }
     int Lock::isReadLocked() {
-        // wrong but a start...
-        return HLM::LockAll::already();
+        return HLM::somethingIsLocked();
     }
     int Lock::somethingWriteLocked() {
-        // wrong but a start...
-        return HLM::LockAll::already();
+        return HLM::somethingIsLocked();
     }
     bool Lock::isRW() {
         return HLM::LockAll::already();
